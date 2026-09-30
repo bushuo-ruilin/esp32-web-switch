@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 网页蓝牙开关</title>
+    <style>
+        body { font-family: sans-serif; text-align: center; margin-top: 50px; background-color: #f4f4f9; }
+        button { font-size: 20px; padding: 15px 30px; margin: 10px; border-radius: 10px; border: none; cursor: pointer; color: white; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        #connectBtn { background-color: #007bff; width: 80%; max-width: 300px;}
+        #onBtn { background-color: #28a745; width: 38%; max-width: 140px; display: none;}
+        #offBtn { background-color: #dc3545; width: 38%; max-width: 140px; display: none;}
+        #status { margin-top: 20px; font-size: 16px; color: #555; }
+    </style>
+</head>
+<body>
+
+    <h2>ESP32 智能开关</h2>
+    <button id="connectBtn">搜索并连接蓝牙</button>
+    <br>
+    <button id="onBtn">开 灯 (1)</button>
+    <button id="offBtn">关 灯 (0)</button>
+    <div id="status">状态: 未连接</div>
+
+    <script>
+        // UUID 必须与 ESP32 代码中完全一致
+        const serviceUuid = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
+        const characteristicUuid = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
+        
+        let bleCharacteristic;
+
+        document.getElementById('connectBtn').addEventListener('click', async () => {
+            try {
+                document.getElementById('status').innerText = '状态: 正在搜索...';
+                
+                // 1. 请求蓝牙设备
+                const device = await navigator.bluetooth.requestDevice({
+                    filters: [{ name: 'ESP32_BLE_Switch' }],
+                    optionalServices: [serviceUuid]
+                });
+
+                document.getElementById('status').innerText = '状态: 正在连接...';
+
+                // 2. 连接到 GATT 服务器
+                const server = await device.gatt.connect();
+                
+                // 3. 获取服务
+                const service = await server.getPrimaryService(serviceUuid);
+                
+                // 4. 获取特征值
+                bleCharacteristic = await service.getCharacteristic(characteristicUuid);
+                
+                document.getElementById('status').innerText = '状态: 已连接！';
+                document.getElementById('connectBtn').style.display = 'none';
+                document.getElementById('onBtn').style.display = 'inline-block';
+                document.getElementById('offBtn').style.display = 'inline-block';
+
+                // 监听断开连接事件
+                device.addEventListener('gattserverdisconnected', () => {
+                    document.getElementById('status').innerText = '状态: 连接已断开';
+                    document.getElementById('connectBtn').style.display = 'inline-block';
+                    document.getElementById('onBtn').style.display = 'none';
+                    document.getElementById('offBtn').style.display = 'none';
+                });
+
+            } catch (error) {
+                console.log(error);
+                document.getElementById('status').innerText = '状态: 连接失败或取消 (' + error + ')';
+            }
+        });
+
+        // 发送数据的函数
+        async function sendCommand(cmd) {
+            if (!bleCharacteristic) return;
+            try {
+                let encoder = new TextEncoder('utf-8');
+                await bleCharacteristic.writeValue(encoder.encode(cmd));
+                console.log('发送成功:', cmd);
+            } catch (error) {
+                console.log('发送失败:', error);
+                document.getElementById('status').innerText = '状态: 发送失败，设备可能已断开';
+            }
+        }
+
+        document.getElementById('onBtn').addEventListener('click', () => sendCommand('1'));
+        document.getElementById('offBtn').addEventListener('click', () => sendCommand('0'));
+    </script>
+</body>
+</html>
